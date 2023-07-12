@@ -2,5 +2,5 @@
 
 A simple timer using android compose.
 
-![screenshot1](img/screenshot_simple_timer_1.jpg)
-![screenshot1](img/screenshot_simple_timer_2.jpg)
+<img src="img/screenshot_simple_timer_1.jpg" width="320px">
+<img src="img/screenshot_simple_timer_2.jpg" width="320px">
