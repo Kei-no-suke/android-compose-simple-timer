@@ -1,14 +1,14 @@
 package com.example.simplecomposetimer.ui
 
 import androidx.lifecycle.ViewModel
-import com.example.simplecomposetimer.ui.data.DurationTime
-import com.example.simplecomposetimer.ui.data.TimerScreenState
+import com.example.simplecomposetimer.data.DurationTime
+import com.example.simplecomposetimer.data.TimerScreenState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
-import com.example.simplecomposetimer.ui.data.TimerString
-import com.example.simplecomposetimer.ui.data.toCharArray
-import com.example.simplecomposetimer.ui.data.toDurationTime
+import com.example.simplecomposetimer.data.TimerString
+import com.example.simplecomposetimer.data.toCharArray
+import com.example.simplecomposetimer.data.toDurationTime
 import java.util.Timer
 import java.util.TimerTask
 

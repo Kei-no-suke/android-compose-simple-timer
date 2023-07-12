@@ -1,4 +1,4 @@
-package com.example.simplecomposetimer.ui.data
+package com.example.simplecomposetimer.data
 
 data class TimerString(
     val hourString: String? = null,
@@ -27,7 +27,7 @@ fun TimerString.toCharArray():MutableList<Char>{
     return chars
 }
 
-fun TimerString.toDurationTime(): DurationTime{
+fun TimerString.toDurationTime(): DurationTime {
     val hour = hourString?.toIntOrNull() ?: 0
     val minute = minuteString?.toIntOrNull() ?: 0
     val second = secondString?.toIntOrNull() ?: 0

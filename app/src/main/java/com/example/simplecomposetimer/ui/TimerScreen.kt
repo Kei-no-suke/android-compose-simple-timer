@@ -22,9 +22,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.simplecomposetimer.R
-import com.example.simplecomposetimer.ui.data.DurationTime
-import com.example.simplecomposetimer.ui.data.TimerScreenState
-import com.example.simplecomposetimer.ui.data.TimerString
+import com.example.simplecomposetimer.data.DurationTime
+import com.example.simplecomposetimer.data.TimerScreenState
+import com.example.simplecomposetimer.data.TimerString
 
 @Composable
 fun TimerScreen(

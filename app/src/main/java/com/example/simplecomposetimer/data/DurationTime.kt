@@ -1,4 +1,4 @@
-package com.example.simplecomposetimer.ui.data
+package com.example.simplecomposetimer.data
 
 data class DurationTime(
     var hour: Int = 0,

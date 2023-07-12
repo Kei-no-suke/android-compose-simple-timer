@@ -15,9 +15,9 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.simplecomposetimer.ui.data.DurationTime
-import com.example.simplecomposetimer.ui.data.formatDuration
-import com.example.simplecomposetimer.ui.data.toSeconds
+import com.example.simplecomposetimer.data.DurationTime
+import com.example.simplecomposetimer.data.formatDuration
+import com.example.simplecomposetimer.data.toSeconds
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
