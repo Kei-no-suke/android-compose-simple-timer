@@ -15,6 +15,12 @@ fun DurationTime.toSeconds(): Int{
     return seconds
 }
 
+fun DurationTime.equal(durationTime: DurationTime): Boolean{
+    return this.hour == durationTime.hour &&
+            this.minute == durationTime.minute &&
+            this.second == durationTime.second
+}
+
 fun formatDuration(durationTime: DurationTime): String{
     val hour = durationTime.hour
     val minute = durationTime.minute
