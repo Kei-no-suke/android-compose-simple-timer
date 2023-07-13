@@ -7,13 +7,16 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -25,29 +28,71 @@ import com.example.simplecomposetimer.R
 import com.example.simplecomposetimer.data.DurationTime
 import com.example.simplecomposetimer.data.TimerScreenState
 import com.example.simplecomposetimer.data.TimerString
+import kotlinx.coroutines.launch
 
 @Composable
 fun TimerScreen(
-    timerViewModel: TimerViewModel = viewModel()
+    timerViewModel: TimerViewModel = viewModel(factory = TimerViewModel.Factory)
 ){
-    val timerUiState = timerViewModel.timerUiState.collectAsState()
+
+    val coroutineScope = rememberCoroutineScope()
+
+    // UI State for timer list screen
+    val timerListUiState = timerViewModel.timerListUiState.collectAsState()
+    // UI State for timer edit screen
     val setTimerUiState = timerViewModel.setTimerUiState.collectAsState()
-    when(timerUiState.value.currentTimerScreenState){
-        TimerScreenState.Timer -> {
-            CanvasCard(
-                timerUiState = timerUiState,
-                updateCurrentDurationTime = { timerViewModel.updateDurationTime(it) },
-                onEditButtonClick = { timerViewModel.updateTimerScreenState(TimerScreenState.Edit) },
-                pauseTimer = { timerViewModel.pauseTimer() },
-                startTimer = { timerViewModel.startTimer() }
-            )
+    // UI State from TimerDatabase
+    val timerItemsUiState = timerViewModel.timerItemsUiState.collectAsState()
+
+    val currentScreenState = timerViewModel.currentScreenState.collectAsState()
+
+    // process execute on database change
+    LaunchedEffect(key1 = timerItemsUiState.value){
+        if(timerItemsUiState.value.timerItemList.isNotEmpty()){
+            timerViewModel.setTimerListItemUiState()
         }
+    }
+
+    // screen branch
+    when(currentScreenState.value.currentTimerScreenState){
+        // timer list screen
+        TimerScreenState.Timer -> {
+            if(timerItemsUiState.value.timerItemList.isEmpty()){
+                Column{
+                    Button(onClick = { timerViewModel.updateTimerScreenState(TimerScreenState.Edit) }) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.baseline_add_24),
+                            contentDescription = null
+                        )
+                    }
+                }
+            }else{
+                CanvasCardList(
+                    timerListItemUiState = timerListUiState,
+                    updateCurrentDurationTime = { durationTime, id ->
+                        timerViewModel.updateDurationTime(durationTime, id) },
+                    onEditButtonClick = { timerViewModel.updateTimerScreenState(TimerScreenState.Edit) },
+                    onDeleteButtonClick = {
+                        coroutineScope.launch {
+                            timerViewModel.deleteTimerListItem(it)
+                        }
+                    },
+                    pauseTimer = { timerViewModel.pauseTimer(it) },
+                    startTimer = { timerViewModel.startTimer(it) }
+                )
+            }
+        }
+        // timer edit screen
         else -> {
             EditCard(
                 addTimerString = { timerViewModel.addTimerString(it) },
                 popTimerString = { timerViewModel.popTimerString() },
                 setTimerUiState = setTimerUiState,
-                saveDurationTime = { timerViewModel.saveDurationTime(it) },
+                saveDurationTime = {
+                    coroutineScope.launch {
+                        timerViewModel.saveDurationTime(it)
+                    }
+                },
                 navigateToHome = { timerViewModel.updateTimerScreenState(TimerScreenState.Timer) }
             )
         }
@@ -56,17 +101,48 @@ fun TimerScreen(
 }
 
 @Composable
+fun CanvasCardList(
+    timerListItemUiState: State<TimerListUiState>,
+    updateCurrentDurationTime: (DurationTime, Int) -> Unit,
+    pauseTimer: (Int) -> Unit,
+    startTimer: (Int) -> Unit,
+    onEditButtonClick: () -> Unit,
+    onDeleteButtonClick: (Int) -> Unit,
+){
+    LazyColumn{
+        item {
+            Button(onClick = onEditButtonClick) {
+                Icon(
+                    painter = painterResource(id = R.drawable.baseline_add_24),
+                    contentDescription = null
+                )
+            }
+        }
+        items(timerListItemUiState.value.timerItemUiList.size){
+            CanvasCard(
+                timerUiState = timerListItemUiState.value.timerItemUiList[it],
+                updateCurrentDurationTime = { durationTime, id ->
+                    updateCurrentDurationTime(durationTime, id) },
+                pauseTimer = { id -> pauseTimer(id) },
+                startTimer = { id -> startTimer(id) },
+                onDeleteButtonClick = { id -> onDeleteButtonClick(id) }
+            )
+        }
+    }
+}
+
+@Composable
 fun CanvasCard(
-    timerUiState: State<TimerUiState>,
-    updateCurrentDurationTime: (DurationTime) -> Unit,
-    pauseTimer: () -> Unit,
-    startTimer: () -> Unit,
-    onEditButtonClick: () -> Unit
+    timerUiState: TimerUiState,
+    updateCurrentDurationTime: (DurationTime, Int) -> Unit,
+    pauseTimer: (Int) -> Unit,
+    startTimer: (Int) -> Unit,
+    onDeleteButtonClick: (Int) -> Unit
 ){
 
-    val durationTimeZeroFlag = (timerUiState.value.durationTime.second == 0) &&
-            (timerUiState.value.durationTime.minute == 0) &&
-            (timerUiState.value.durationTime.hour == 0)
+    val durationTimeZeroFlag = (timerUiState.durationTime.second == 0) &&
+            (timerUiState.durationTime.minute == 0) &&
+            (timerUiState.durationTime.hour == 0)
 
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Card(modifier = Modifier
@@ -74,8 +150,8 @@ fun CanvasCard(
             .padding(vertical = 16.dp, horizontal = 8.dp)) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 TimerCircularProgressBar(
-                    setDurationTime = timerUiState.value.firstDurationTime,
-                    currentDurationTime = timerUiState.value.durationTime,
+                    setDurationTime = timerUiState.firstDurationTime,
+                    currentDurationTime = timerUiState.durationTime,
                     trackColor = Color.LightGray,
                     centerColor = Color(0xFFa7d398),
                     barColor = Color.DarkGray,
@@ -87,7 +163,7 @@ fun CanvasCard(
         Row{
             Button(
                 onClick = {
-                    updateCurrentDurationTime(timerUiState.value.firstDurationTime)
+                    updateCurrentDurationTime(timerUiState.firstDurationTime, timerUiState.timerId)
                 },
                 modifier = Modifier.padding(horizontal = 2.dp)
             ) {
@@ -97,9 +173,9 @@ fun CanvasCard(
                 )
             }
             Button(
-                onClick = pauseTimer,
+                onClick = { pauseTimer(timerUiState.timerId) },
                 modifier = Modifier.padding(horizontal = 2.dp),
-                enabled = !timerUiState.value.isTimerStop && !durationTimeZeroFlag
+                enabled = !timerUiState.isTimerStop && !durationTimeZeroFlag
             ) {
                 Icon(
                     painter = painterResource(id = R.drawable.baseline_pause_24),
@@ -107,9 +183,9 @@ fun CanvasCard(
                 )
             }
             Button(
-                onClick = startTimer,
+                onClick = { startTimer(timerUiState.timerId) },
                 modifier = Modifier.padding(horizontal = 2.dp),
-                enabled = timerUiState.value.isTimerStop && !durationTimeZeroFlag
+                enabled = timerUiState.isTimerStop && !durationTimeZeroFlag
             ) {
                 Icon(
                     painter = painterResource(id = R.drawable.baseline_play_arrow_24),
@@ -118,11 +194,11 @@ fun CanvasCard(
             }
             Button(
                 onClick = {
-                    onEditButtonClick()
+                    onDeleteButtonClick(timerUiState.timerId)
                 },
                 modifier = Modifier.padding(horizontal = 2.dp)) {
                 Icon(
-                    painter = painterResource(id = R.drawable.baseline_mode_edit_24),
+                    painter = painterResource(id = R.drawable.baseline_delete_24),
                     contentDescription = null
                 )
             }
@@ -240,10 +316,13 @@ fun EditCard(
         Icon(
             painter = painterResource(id = R.drawable.baseline_check_circle_24),
             contentDescription = null,
-            modifier = Modifier.clickable{
-                saveDurationTime(setTimerUiState.value.timerString)
-                navigateToHome()
-            }.size(60.dp).padding(top = 16.dp),
+            modifier = Modifier
+                .clickable {
+                    saveDurationTime(setTimerUiState.value.timerString)
+                    navigateToHome()
+                }
+                .size(60.dp)
+                .padding(top = 16.dp),
             tint = Color(0xFF006d4d)
         )
     }

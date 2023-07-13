@@ -1,7 +1,15 @@
 package com.example.simplecomposetimer.ui
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
+import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
+import com.example.simplecomposetimer.TimerApplication
 import com.example.simplecomposetimer.data.DurationTime
+import com.example.simplecomposetimer.data.TimerItem
+import com.example.simplecomposetimer.data.TimerItemsRepository
 import com.example.simplecomposetimer.data.TimerScreenState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -9,38 +17,109 @@ import kotlinx.coroutines.flow.update
 import com.example.simplecomposetimer.data.TimerString
 import com.example.simplecomposetimer.data.toCharArray
 import com.example.simplecomposetimer.data.toDurationTime
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import java.util.Timer
 import java.util.TimerTask
 
-class TimerViewModel: ViewModel() {
+class TimerViewModel(private val timerItemsRepository: TimerItemsRepository): ViewModel() {
 
     // property
-    private var timer : Timer? = null
+    private var timerMap : MutableMap<Int, Timer> = mutableMapOf()
 
     // State
-    private val _timerUiState = MutableStateFlow(TimerUiState())
-    val timerUiState: StateFlow<TimerUiState> = _timerUiState
+    // StateFlow from TimerDatabase
+    val timerItemsUiState: StateFlow<TimerItemsUiState> =
+        timerItemsRepository.getAllTimerItemsStream().map{ TimerItemsUiState(it) }
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(TIMEOUT_MILLIS),
+                initialValue = TimerItemsUiState()
+            )
 
     private val _setTimerUiState = MutableStateFlow(SetTimerUiState())
     val setTimerUiState: StateFlow<SetTimerUiState> = _setTimerUiState
 
-    // method of timerUiState
-    private fun updateFirstDurationTime(durationTime: DurationTime){
-        val currentState = _timerUiState.value
-        _timerUiState.update { currentState.copy(
-            firstDurationTime = durationTime
-        ) }
+    private val _timerListUiState = MutableStateFlow(TimerListUiState())
+    val timerListUiState: StateFlow<TimerListUiState> = _timerListUiState
+
+    private val _currentScreenState = MutableStateFlow(CurrentTimerScreenState())
+    val currentScreenState: StateFlow<CurrentTimerScreenState> = _currentScreenState
+
+    // method of database
+    fun setTimerListItemUiState(){
+        val currentList = _timerListUiState.value.timerItemUiList
+        val newList: MutableList<TimerUiState> = mutableListOf()
+        for(i in 0 until timerItemsUiState.value.timerItemList.size){
+            val currentElement = timerItemsUiState.value.timerItemList[i]
+            if(currentList.find{ it.timerId ==  currentElement.id} == null){
+                newList.add(TimerUiState(
+                    timerId = currentElement.id,
+                    durationTime = DurationTime(
+                        hour = currentElement.hour,
+                        minute = currentElement.minute,
+                        second = currentElement.second
+                    ),
+                    firstDurationTime = DurationTime(
+                        hour = currentElement.hour,
+                        minute = currentElement.minute,
+                        second = currentElement.second
+                    )
+                ))
+            }else{
+                val findElement = currentList.find{ it.timerId ==  currentElement.id}
+                newList.add(
+                    findElement!!.copy(
+                        firstDurationTime = DurationTime(
+                            hour = currentElement.hour,
+                            minute = currentElement.minute,
+                            second = currentElement.second
+                        )
+                    )
+                )
+            }
+        }
+        _timerListUiState.update {
+            _timerListUiState.value.copy(
+                timerItemUiList = newList
+            )
+        }
     }
 
-    fun updateDurationTime(durationTime: DurationTime){
-        val currentState = _timerUiState.value
-        _timerUiState.update { currentState.copy(
-            durationTime = durationTime
-        ) }
+    suspend fun deleteTimerListItem(id: Int){
+        val deleteTarget = timerItemsUiState.value.timerItemList.find { it.id == id }!!
+        timerItemsRepository.deleteTimerItem(deleteTarget)
     }
 
-    private fun oneSecondPassDurationTime(){
-        val currentDurationTime = _timerUiState.value.durationTime.copy()
+    fun updateDurationTime(durationTime: DurationTime, id: Int){
+        val currentIndex = _timerListUiState.value.timerItemUiList.indices.find {
+            _timerListUiState.value.timerItemUiList[it].timerId == id
+        }!!
+        val currentState = _timerListUiState.value.timerItemUiList.find {
+            it.timerId == id
+        }!!
+        _timerListUiState.update {
+            it.copy(
+                timerItemUiList = createNewMutableList(
+                    it.timerItemUiList,
+                    currentState.copy(
+                        durationTime = durationTime
+                    ),
+                    currentIndex
+                )
+            )
+        }
+    }
+
+    private fun oneSecondPassDurationTime(id: Int){
+        val currentState = _timerListUiState.value.timerItemUiList.find {
+            it.timerId == id
+        }
+        val currentDurationTime = currentState!!.durationTime.copy()
+        val currentIndex = _timerListUiState.value.timerItemUiList.indices.find {
+            _timerListUiState.value.timerItemUiList[it].timerId == id
+        }!!
         if(currentDurationTime.second == 0){
             if(currentDurationTime.minute != 0){
                 currentDurationTime.second = 59
@@ -55,26 +134,43 @@ class TimerViewModel: ViewModel() {
         }else{
             currentDurationTime.second--
         }
-        _timerUiState.update {it.copy(
-            durationTime = DurationTime(
-                hour = currentDurationTime.hour,
-                minute = currentDurationTime.minute,
-                second = currentDurationTime.second,
+        _timerListUiState.update {
+            it.copy(
+                timerItemUiList = createNewMutableList(
+                    it.timerItemUiList,
+                    currentState.copy(
+                        durationTime = currentDurationTime
+                    ),
+                    currentIndex
+                )
             )
-        )
         }
     }
 
-    private fun updateIsTimerStop(){
-        val currentState = _timerUiState.value
-        _timerUiState.update { currentState.copy(
-            isTimerStop = !currentState.isTimerStop
-        ) }
+    private fun updateIsTimerStop(id: Int){
+        val currentState = _timerListUiState.value.timerItemUiList.find {
+            it.timerId == id
+        }!!
+        val currentIsTimerStop = currentState.isTimerStop
+        val currentIndex = _timerListUiState.value.timerItemUiList.indices.find {
+            _timerListUiState.value.timerItemUiList[it].timerId == id
+        }!!
+        _timerListUiState.update {
+            it.copy(
+                timerItemUiList = createNewMutableList(
+                    it.timerItemUiList,
+                    currentState.copy(
+                        isTimerStop = !currentIsTimerStop
+                    ),
+                    currentIndex
+                )
+            )
+        }
     }
 
     fun updateTimerScreenState(timerScreenState: TimerScreenState){
-        val currentState = _timerUiState.value
-        _timerUiState.update { currentState.copy(
+        val currentState = _currentScreenState.value
+        _currentScreenState.update { currentState.copy(
             currentTimerScreenState = timerScreenState
         ) }
     }
@@ -119,39 +215,84 @@ class TimerViewModel: ViewModel() {
         return TimerString(hourString, minuteString, secondString)
     }
 
-    fun saveDurationTime(timerString: TimerString) {
+    suspend fun saveDurationTime(timerString: TimerString) {
         val durationTime = timerString.toDurationTime()
-        updateFirstDurationTime(durationTime)
-        updateDurationTime(durationTime)
+        timerItemsRepository.insertTimerItem(
+            TimerItem(
+                name = "Timer",
+                hour = durationTime.hour,
+                minute = durationTime.minute,
+                second = durationTime.second,
+                totalSecond = (durationTime.hour * 3600 + durationTime.minute * 60 + durationTime.second).toLong()
+            )
+        )
     }
 
     // method of timer
-    fun pauseTimer(){
-        updateIsTimerStop()
-        timer?.cancel()
-        timer = null
+    fun pauseTimer(id: Int){
+        updateIsTimerStop(id)
+        timerMap[id]?.cancel()
+        timerMap.remove(id)
     }
 
-    fun startTimer(){
-        updateIsTimerStop()
-        timer = Timer()
-        timer?.scheduleAtFixedRate( object : TimerTask() {
+    fun startTimer(id: Int){
+        updateIsTimerStop(id)
+        timerMap += id to Timer()
+        timerMap[id]?.scheduleAtFixedRate( object : TimerTask() {
             override fun run() {
-                oneSecondPassDurationTime()
+                oneSecondPassDurationTime(id)
             }
         }, 0, 1000)
+    }
+
+    companion object {
+        private const val TIMEOUT_MILLIS = 5_000L
+        val Factory: ViewModelProvider.Factory = viewModelFactory {
+            initializer {
+                val application = (this[APPLICATION_KEY] as TimerApplication)
+                TimerViewModel(application.container.timerItemsRepository)
+            }
+        }
     }
 
 }
 
 data class TimerUiState(
+    val timerId: Int = 0,
     val durationTime: DurationTime = DurationTime(second = 0),
     val firstDurationTime: DurationTime = DurationTime(second = 0),
     val isTimerStop: Boolean = true,
-    val currentTimerScreenState: TimerScreenState = TimerScreenState.Timer
 )
 
 data class SetTimerUiState(
     val timerString: TimerString = TimerString()
 )
+
+// data class for StateFlow from TimerDatabase
+data class TimerItemsUiState(
+    val timerItemList: List<TimerItem> = listOf()
+)
+
+// data class for StateFlow of timer list screen
+data class TimerListUiState(
+    val timerItemUiList: MutableList<TimerUiState> = mutableListOf()
+)
+
+data class CurrentTimerScreenState(
+    val currentTimerScreenState: TimerScreenState = TimerScreenState.Timer
+)
+
+fun <T> createNewMutableList(currentMutableList: MutableList<T>, value: T, index: Int):
+        MutableList<T>{
+    val newMutableList: MutableList<T> = mutableListOf()
+
+    for(i in 0 until currentMutableList.size){
+        if(i == index){
+            newMutableList.add(value)
+        }else{
+            newMutableList.add(currentMutableList[i])
+        }
+    }
+    return newMutableList
+}
 
