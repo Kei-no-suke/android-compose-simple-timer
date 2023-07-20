@@ -11,5 +11,10 @@ data class TimerItem(
     val hour: Int,
     val minute: Int,
     val second: Int,
-    val totalSecond: Long
+    val totalSecond: Long,
+    val timerActive: Boolean = false,
+    val startDate: Long? = null,
+    val stopHour: Int,
+    val stopMinute: Int,
+    val stopSecond: Int
 )
