@@ -4,7 +4,28 @@ data class DurationTime(
     var hour: Int = 0,
     var minute: Int = 0,
     var second: Int = 0
-)
+){
+    fun plus(durationTime: DurationTime): DurationTime{
+        val sumSeconds = this.toSeconds() + durationTime.toSeconds()
+        val sumHour = sumSeconds / 3600
+        val sumMinute = (sumSeconds % 3600) / 60
+        val sumSecond = sumSeconds % 60
+
+        return DurationTime(sumHour, sumMinute, sumSecond)
+    }
+
+    fun minus(durationTime: DurationTime): DurationTime{
+        if(this.toSeconds() < durationTime.toSeconds()){
+            return DurationTime()
+        }
+        val diffSeconds = this.toSeconds() - durationTime.toSeconds()
+        val diffHour = diffSeconds / 3600
+        val diffMinute = (diffSeconds % 3600) / 60
+        val diffSecond = diffSeconds % 60
+
+        return DurationTime(diffHour, diffMinute, diffSecond)
+    }
+}
 
 fun DurationTime.toSeconds(): Int{
     var seconds: Int = 0
@@ -20,6 +41,7 @@ fun DurationTime.equal(durationTime: DurationTime): Boolean{
             this.minute == durationTime.minute &&
             this.second == durationTime.second
 }
+
 
 fun formatDuration(durationTime: DurationTime): String{
     val hour = durationTime.hour
