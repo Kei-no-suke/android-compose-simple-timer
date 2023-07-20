@@ -1,5 +1,7 @@
 package com.example.simplecomposetimer.ui
 
+import android.util.Log
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
@@ -17,9 +19,12 @@ import kotlinx.coroutines.flow.update
 import com.example.simplecomposetimer.data.TimerString
 import com.example.simplecomposetimer.data.toCharArray
 import com.example.simplecomposetimer.data.toDurationTime
+import com.example.simplecomposetimer.data.toSeconds
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+import java.util.Date
 import java.util.Timer
 import java.util.TimerTask
 
@@ -47,26 +52,61 @@ class TimerViewModel(private val timerItemsRepository: TimerItemsRepository): Vi
     private val _currentScreenState = MutableStateFlow(CurrentTimerScreenState())
     val currentScreenState: StateFlow<CurrentTimerScreenState> = _currentScreenState
 
+    // initial process end flag
+    private val _initProcessEndState = MutableStateFlow(false)
+
     // method of database
     fun setTimerListItemUiState(){
         val currentList = _timerListUiState.value.timerItemUiList
         val newList: MutableList<TimerUiState> = mutableListOf()
+        val activeIdList: MutableList<Int> = mutableListOf()
         for(i in 0 until timerItemsUiState.value.timerItemList.size){
             val currentElement = timerItemsUiState.value.timerItemList[i]
             if(currentList.find{ it.timerId ==  currentElement.id} == null){
-                newList.add(TimerUiState(
-                    timerId = currentElement.id,
-                    durationTime = DurationTime(
-                        hour = currentElement.hour,
-                        minute = currentElement.minute,
-                        second = currentElement.second
-                    ),
-                    firstDurationTime = DurationTime(
-                        hour = currentElement.hour,
-                        minute = currentElement.minute,
-                        second = currentElement.second
+                if(currentElement.timerActive){     // timer is active
+                    // Synchronization with current time (get diff)
+                    Log.d("setTimerListItemUiState", currentElement.startDate.toString())
+                    val diffDurationTime = getDiffDurationTime(
+                        DurationTime(
+                            currentElement.stopHour,
+                            currentElement.stopMinute,
+                            currentElement.stopSecond
+                        ),
+                        Date(currentElement.startDate!!)
                     )
-                ))
+                    newList.add(TimerUiState(
+                        timerId = currentElement.id,
+                        durationTime = DurationTime(
+                            hour = diffDurationTime.hour,
+                            minute = diffDurationTime.minute,
+                            second = diffDurationTime.second
+                        ),
+                        firstDurationTime = DurationTime(
+                            hour = currentElement.hour,
+                            minute = currentElement.minute,
+                            second = currentElement.second
+                        ),
+                        isTimerStop = false
+                    ))
+
+                    activeIdList.add(currentElement.id)
+                }else{                              // timer is not active
+                    newList.add(TimerUiState(
+                        timerId = currentElement.id,
+                        durationTime = DurationTime(
+                            hour = currentElement.stopHour,
+                            minute = currentElement.stopMinute,
+                            second = currentElement.stopSecond
+                        ),
+                        firstDurationTime = DurationTime(
+                            hour = currentElement.hour,
+                            minute = currentElement.minute,
+                            second = currentElement.second
+                        ),
+                        isTimerStop = true
+                    ))
+                }
+
             }else{
                 val findElement = currentList.find{ it.timerId ==  currentElement.id}
                 newList.add(
@@ -84,6 +124,11 @@ class TimerViewModel(private val timerItemsRepository: TimerItemsRepository): Vi
             _timerListUiState.value.copy(
                 timerItemUiList = newList
             )
+        }
+        if(activeIdList.isNotEmpty()){
+            for(i in 0 until activeIdList.size){
+                restartTimer(activeIdList[i])
+            }
         }
     }
 
@@ -216,14 +261,17 @@ class TimerViewModel(private val timerItemsRepository: TimerItemsRepository): Vi
     }
 
     suspend fun saveDurationTime(timerString: TimerString) {
-        val durationTime = timerString.toDurationTime()
+        val durationTime = totalSecondsToDurationTime(timerString.toDurationTime().toSeconds())
         timerItemsRepository.insertTimerItem(
             TimerItem(
                 name = "Timer",
                 hour = durationTime.hour,
                 minute = durationTime.minute,
                 second = durationTime.second,
-                totalSecond = (durationTime.hour * 3600 + durationTime.minute * 60 + durationTime.second).toLong()
+                totalSecond = (durationTime.hour * 3600 + durationTime.minute * 60 + durationTime.second).toLong(),
+                stopHour = durationTime.hour,
+                stopMinute = durationTime.minute,
+                stopSecond = durationTime.second,
             )
         )
     }
@@ -231,12 +279,65 @@ class TimerViewModel(private val timerItemsRepository: TimerItemsRepository): Vi
     // method of timer
     fun pauseTimer(id: Int){
         updateIsTimerStop(id)
+        val currentState = _timerListUiState.value.timerItemUiList.find {
+            it.timerId == id
+        }!!
+        viewModelScope.launch {
+            timerItemsRepository.updateTimerItem(
+                TimerItem(
+                    id = id,
+                    name = "Timer",
+                    hour = currentState.firstDurationTime.hour,
+                    minute = currentState.firstDurationTime.minute,
+                    second = currentState.firstDurationTime.second,
+                    totalSecond = (currentState.firstDurationTime.hour * 3600 +
+                            currentState.firstDurationTime.minute * 60 +
+                            currentState.firstDurationTime.second).toLong(),
+                    timerActive = false,
+                    startDate = null,
+                    stopHour = currentState.durationTime.hour,
+                    stopMinute = currentState.durationTime.minute,
+                    stopSecond = currentState.durationTime.second,
+                )
+            )
+        }
         timerMap[id]?.cancel()
         timerMap.remove(id)
     }
 
     fun startTimer(id: Int){
         updateIsTimerStop(id)
+        timerMap += id to Timer()
+        timerMap[id]?.scheduleAtFixedRate( object : TimerTask() {
+            override fun run() {
+                oneSecondPassDurationTime(id)
+            }
+        }, 0, 1000)
+        val currentState = _timerListUiState.value.timerItemUiList.find {
+            it.timerId == id
+        }!!
+        viewModelScope.launch {
+            timerItemsRepository.updateTimerItem(
+                TimerItem(
+                    id = id,
+                    name = "Timer",
+                    hour = currentState.firstDurationTime.hour,
+                    minute = currentState.firstDurationTime.minute,
+                    second = currentState.firstDurationTime.second,
+                    totalSecond = (currentState.firstDurationTime.hour * 3600 +
+                            currentState.firstDurationTime.minute * 60 +
+                            currentState.firstDurationTime.second).toLong(),
+                    timerActive = true,
+                    startDate = Date().time,
+                    stopHour = currentState.durationTime.hour,
+                    stopMinute = currentState.durationTime.minute,
+                    stopSecond = currentState.durationTime.second,
+                )
+            )
+        }
+    }
+
+    private fun restartTimer(id: Int){
         timerMap += id to Timer()
         timerMap[id]?.scheduleAtFixedRate( object : TimerTask() {
             override fun run() {
@@ -295,4 +396,18 @@ fun <T> createNewMutableList(currentMutableList: MutableList<T>, value: T, index
     }
     return newMutableList
 }
+
+fun getDiffDurationTime(currentDurationTime: DurationTime, startDate: Date): DurationTime{
+    val diffSeconds = ((Date().time - startDate.time) / 1000).toInt()
+    val diffDurationTime = totalSecondsToDurationTime(diffSeconds)
+    return currentDurationTime.minus(diffDurationTime)
+}
+
+fun totalSecondsToDurationTime(totalSeconds: Int): DurationTime{
+    val hour = totalSeconds / 3600
+    val minute = (totalSeconds % 3600) / 60
+    val second = totalSeconds % 60
+    return DurationTime(hour, minute, second)
+}
+
 
