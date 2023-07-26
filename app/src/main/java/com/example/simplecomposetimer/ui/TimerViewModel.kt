@@ -1,7 +1,6 @@
 package com.example.simplecomposetimer.ui
 
 import android.util.Log
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
@@ -9,6 +8,8 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.simplecomposetimer.TimerApplication
+import com.example.simplecomposetimer.alarm.AlarmScheduler
+import com.example.simplecomposetimer.alarm.toAlarmItem
 import com.example.simplecomposetimer.data.DurationTime
 import com.example.simplecomposetimer.data.TimerItem
 import com.example.simplecomposetimer.data.TimerItemsRepository
@@ -28,7 +29,10 @@ import java.util.Date
 import java.util.Timer
 import java.util.TimerTask
 
-class TimerViewModel(private val timerItemsRepository: TimerItemsRepository): ViewModel() {
+class TimerViewModel(
+    private val timerItemsRepository: TimerItemsRepository,
+    private val androidAlarmScheduler: AlarmScheduler
+    ): ViewModel() {
 
     // property
     private var timerMap : MutableMap<Int, Timer> = mutableMapOf()
@@ -282,6 +286,7 @@ class TimerViewModel(private val timerItemsRepository: TimerItemsRepository): Vi
         val currentState = _timerListUiState.value.timerItemUiList.find {
             it.timerId == id
         }!!
+        androidAlarmScheduler.cancel(currentState.toAlarmItem())
         viewModelScope.launch {
             timerItemsRepository.updateTimerItem(
                 TimerItem(
@@ -316,6 +321,7 @@ class TimerViewModel(private val timerItemsRepository: TimerItemsRepository): Vi
         val currentState = _timerListUiState.value.timerItemUiList.find {
             it.timerId == id
         }!!
+        androidAlarmScheduler.schedule(currentState.toAlarmItem())
         viewModelScope.launch {
             timerItemsRepository.updateTimerItem(
                 TimerItem(
@@ -351,7 +357,10 @@ class TimerViewModel(private val timerItemsRepository: TimerItemsRepository): Vi
         val Factory: ViewModelProvider.Factory = viewModelFactory {
             initializer {
                 val application = (this[APPLICATION_KEY] as TimerApplication)
-                TimerViewModel(application.container.timerItemsRepository)
+                TimerViewModel(
+                    application.container.timerItemsRepository,
+                    application.container.androidAlarmScheduler
+                    )
             }
         }
     }
