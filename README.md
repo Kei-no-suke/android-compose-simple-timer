@@ -14,6 +14,32 @@ OS: Windows 11
 minSdkVersion: 26  
 targetSdkVersion: 33 
 
+## アプリのメイン画面
+<img src="img/app_main.png" width=400vw>
+
+## 遷移先
+↓タイマーの追加画面  
+<img src="img/app_screen_1.png" width=400vw>
+
+↓タイマーの通知画面  
+<img src="img/app_screen_2.png" width=400vw>
+
+## 利用手順
+<img src="img/app_desc_1.png" width=400vw>  
+
+### タイマーを追加する
+1. 追加ボタンをタップします。
+2. 遷移先のタイマーの追加画面でタイマーの時間を設定します。
+3. 数字ボタンの下のチェックボタンをタップして確定します。
+5. アプリのメイン画面にタイマーが追加されています。
+### タイマーを操作する
+1. 開始ボタンをタップしてタイマーを開始します。
+2. 停止ボタンをタップしてタイマーを停止します。
+3. 戻るボタンをタップしてタイマーを元の秒数に戻します。
+4. 削除ボタンをタップしてタイマーを削除します。
+5. タイマーの秒数が0になるとタイマーの通知画面が表示され振動します。
+6. タイマーの通知画面で停止ボタンをタップするとアプリのメイン画面に戻ります。
+
 ## 使用ライブラリ
 不要なライブラリを追加している可能性があります。
 ### Navigation
@@ -54,8 +80,3 @@ AlarmManagerがアプリを閉じているときに作動しないことが起�
 <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
 ```
 
-
-
-
-<img src="img/screenshot_simple_timer_1.jpg" width="320px">
-<img src="img/screenshot_simple_timer_2.jpg" width="320px">
